@@ -108,7 +108,7 @@
                                          (let [action (.. e -target -checked)]
                                            (println "Pressed so attempting to set to:" action)
                                            (om/transact! this `[(graph/select-line {:want-to-select? ~action :id ~id}) :app/customers])))})
-               (dom/label #js{:className "xlarge"} (dom/h2 #js{:className "side higher-text"} "Some text"))))))
+               (dom/label #js{:className "xlarge"} (dom/h2 #js{:className "side higher-text"} line-name))))))
 (def checkbox (om/factory Checkbox {:keyfn :id}))
 
 (defui Customer
@@ -146,7 +146,7 @@
                         (fake-graph selected-lines)
                         #_(dom/br nil)
                         #_(dom/br nil)
-                        #_(help/any-action {:text "Show State" :action #(pprint @my-reconciler)})
+                        (help/any-action {:text "Show State" :action #(pprint @my-reconciler)})
                         #_(dom/br nil))
                #_(help/any-action {:text "Add Selection" :action #(help/mutate help/norm-state true 102)})
                #_(help/any-action {:text "Remove Selection" :action #(help/mutate help/norm-state false 100)})
