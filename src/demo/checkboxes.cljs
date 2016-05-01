@@ -7,6 +7,40 @@
 
 (enable-console-print!)
 
+(defmulti read om/dispatch)
+(defmulti mutate om/dispatch)
+
+(def parser
+  (om/parser {:read   read
+              :mutate mutate}))
+
+(defmethod read :graph/lines
+  [{:keys [state query]} key _]
+  (let [st @state]
+    {:value (om/db->tree query (get st key) st)}))
+
+(defmethod read :graph/selected-lines
+  [{:keys [state query]} key _]
+  (let [st @state]
+    {:value (om/db->tree query (get st key) st)}))
+
+(defmethod read :app/customers
+  [{:keys [state query]} key _]
+  (let [st @state]
+    {:value (om/db->tree query (get st key) st)}))
+
+;;
+;; "Only need to add or remove from the :graph/selected-lines refs mapentry"
+;; (pprint (get @state :graph/selected-lines))
+;;
+(defmethod mutate 'graph/select-line
+  [{:keys [state]} _ {:keys [want-to-select? id]}]
+  {:action #(let [ident [:line/by-id id]]
+             (if want-to-select?
+               (swap! state update :graph/selected-lines (fn [st] (-> st
+                                                                      (conj ident))))
+               (swap! state update :graph/selected-lines (fn [lines] (vec (remove #{ident} lines))))))})
+
 (def init-state
   {:graph/selected-lines
    [{:id 100}
@@ -51,10 +85,10 @@
     (println "Rendering the FakeGraph")
     (let [props (om/props this)
           selected-names (map :line-name props)]
-      (dom/label nil (apply str "Graph for these: " (interpose ", " selected-names))))))
+      (dom/h2 #js{:className "fake-graph"} (apply str "GRAPH: " (interpose ", " selected-names))))))
 (def fake-graph (om/factory FakeGraph))
 
-(defui GraphLineSelectionCheckbox
+(defui Checkbox
   static om/Ident
   (ident [this props]
     [:line/by-id (:id props)])
@@ -62,20 +96,20 @@
   (query [this]
     [:id :line-name])
   Object
-  ;(shouldComponentUpdate [this next-props next-state] true)
   (render [this]
     (let [{:keys [id line-name]} (om/props this)
           {:keys [selected?]} (om/get-computed this)
           _ (println "Rendering cb:" id "when selected is:" selected?)]
-      (dom/div #js {:className "switch demo3"}
+      (dom/div nil
                (dom/input #js{:type    "checkbox"
+                              :className "xlarge"
                               :checked selected?
                               :onClick (fn [e]
                                          (let [action (.. e -target -checked)]
                                            (println "Pressed so attempting to set to:" action)
                                            (om/transact! this `[(graph/select-line {:want-to-select? ~action :id ~id}) :app/customers])))})
-               (dom/label nil (dom/i nil))))))
-(def graph-line-selection-checkbox (om/factory GraphLineSelectionCheckbox {:keyfn :id}))
+               (dom/label #js{:className "xlarge"} (dom/h2 #js{:className "side higher-text"} "Some text"))))))
+(def checkbox (om/factory Checkbox {:keyfn :id}))
 
 (defui Customer
   static om/Ident
@@ -85,39 +119,6 @@
   (query [this]
     [:id :first-name]))
 
-(defmulti read om/dispatch)
-(defmulti mutate om/dispatch)
-(def parser
-  (om/parser {:read   read
-              :mutate mutate}))
-
-(defmethod read :graph/lines
-  [{:keys [state query]} key _]
-  (let [st @state]
-    {:value (om/db->tree query (get st key) st)}))
-
-(defmethod read :graph/selected-lines
-  [{:keys [state query]} key _]
-  (let [st @state]
-    {:value (om/db->tree query (get st key) st)}))
-
-(defmethod read :app/customers
-  [{:keys [state query]} key _]
-  (let [st @state]
-    {:value (om/db->tree query (get st key) st)}))
-
-;;
-;; "Only need to add or remove from the :graph/selected-lines refs mapentry"
-;; (pprint (get @state :graph/selected-lines))
-;;
-(defmethod mutate 'graph/select-line
-  [{:keys [state]} _ {:keys [want-to-select? id]}]
-  {:action #(let [ident [:line/by-id id]]
-             (if want-to-select?
-               (swap! state update :graph/selected-lines (fn [st] (-> st
-                                                                      (conj ident))))
-               (swap! state update :graph/selected-lines (fn [lines] (vec (remove #{ident} lines))))))})
-
 (def my-reconciler
   (om/reconciler {:normalize true ;; -> documentation
                   :state     init-state
@@ -126,24 +127,27 @@
 (defui Root
   static om/IQuery
   (query [this]
-    [{:graph/lines (om/get-query GraphLineSelectionCheckbox)}
-     {:graph/selected-lines (om/get-query GraphLineSelectionCheckbox)}
+    [{:graph/lines (om/get-query Checkbox)}
+     {:graph/selected-lines (om/get-query Checkbox)}
      {:app/customers (om/get-query Customer)}
      ])
   Object
   (render [this]
     (println "Rendering 'demo.checkboxes' from Root")
     (let [{:keys [graph/lines graph/selected-lines]} (om/props this)]
-      (dom/div nil
+      (dom/div #js{:className "container"}
                (check-default-db @my-reconciler)
-               (for [line lines
-                     :let [selected? (boolean (some #{line} selected-lines))]]
-                 (graph-line-selection-checkbox (om/computed line {:selected? selected?})))
-               (fake-graph selected-lines)
-               (dom/br nil)
-               (dom/br nil)
-               (help/any-action {:text "Show State" :action #(pprint @my-reconciler)})
-               (dom/br nil)
+               (dom/div nil
+                        (for [line lines
+                              :let [selected? (boolean (some #{line} selected-lines))]]
+                          (checkbox (om/computed line {:selected? selected?}))))
+               (dom/div nil
+                        (dom/br nil)
+                        (fake-graph selected-lines)
+                        #_(dom/br nil)
+                        #_(dom/br nil)
+                        #_(help/any-action {:text "Show State" :action #(pprint @my-reconciler)})
+                        #_(dom/br nil))
                #_(help/any-action {:text "Add Selection" :action #(help/mutate help/norm-state true 102)})
                #_(help/any-action {:text "Remove Selection" :action #(help/mutate help/norm-state false 100)})
                ))))
