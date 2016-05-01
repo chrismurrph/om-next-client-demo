@@ -14,12 +14,17 @@
   (om/parser {:read   read
               :mutate mutate}))
 
-(defmethod read :graph/lines
+(defmethod read :graph/graph-lines
   [{:keys [state query]} key _]
   (let [st @state]
     {:value (om/db->tree query (get st key) st)}))
 
-(defmethod read :graph/selected-lines
+(defmethod read :graph/fake-graph
+  [{:keys [state query]} key _]
+  (let [st @state]
+    {:value (om/db->tree query (get st key) st)}))
+
+(defmethod read :app/app-lines
   [{:keys [state query]} key _]
   (let [st @state]
     {:value (om/db->tree query (get st key) st)}))
@@ -29,31 +34,44 @@
   (let [st @state]
     {:value (om/db->tree query (get st key) st)}))
 
-;;
-;; "Only need to add or remove from the :graph/selected-lines refs mapentry"
-;; (pprint (get @state :graph/selected-lines))
-;;
+(comment
+  (defmethod read :fake-graph/by-id
+    [{:keys [state query]} key _]
+    (let [st @state]
+      {:value (om/db->tree query (get st key) st)})))
+
+(defn update-graph-lines [st want-to-select? id]
+  (let [graph-lines [:fake-graph/by-id 1000 :graph/graph-lines]]
+    (if want-to-select?
+      (update-in st graph-lines (fn [v] (vec (conj v [:line/by-id id]))))
+      (update-in st graph-lines (fn [v] (vec (remove #{[:line/by-id id]} v)))))))
+
+(defn update-lines
+  [last-state {:keys [want-to-select? id]}]
+  (-> last-state
+      (update-in [:line/by-id id] assoc :selected? want-to-select?)
+      (update-graph-lines want-to-select? id)))
+
 (defmethod mutate 'graph/select-line
-  [{:keys [state]} _ {:keys [want-to-select? id]}]
-  {:action #(let [ident [:line/by-id id]]
-             (if want-to-select?
-               (swap! state update :graph/selected-lines (fn [st] (-> st
-                                                                      (conj ident))))
-               (swap! state update :graph/selected-lines (fn [lines] (vec (remove #{ident} lines))))))})
+  [{:keys [state]} _ params]
+  {:action #(swap! state update-lines params)})
 
 (def init-state
-  {:graph/selected-lines
-   [{:id 100}
-    {:id 101}]
-   :graph/lines
+  {:graph/fake-graph {:id 1000
+                      :graph/graph-lines [{:id 100}]}
+   :app/app-lines
    [{:id   100
-     :line-name "Methane"}
+     :line-name "Methane"
+     :selected? true}
     {:id   101
-     :line-name "Oxygen"}
+     :line-name "Oxygen"
+     :selected? false}
     {:id   102
-     :line-name "Carbon Dioxide"}
+     :line-name "Carbon Dioxide"
+     :selected? false}
     {:id   103
-     :line-name "Carbon Monoxide"}
+     :line-name "Carbon Monoxide"
+     :selected? false}
     ]
    :app/customers
    [{:id 200
@@ -79,14 +97,14 @@
       (pprint st)
       (db-format/show-hud check-result))))
 
-(defui FakeGraph
-  Object
-  (render [this]
-    (println "Rendering the FakeGraph")
-    (let [props (om/props this)
-          selected-names (map :line-name props)]
-      (dom/h2 #js{:className "fake-graph"} (apply str "GRAPH: " (interpose ", " selected-names))))))
-(def fake-graph (om/factory FakeGraph))
+(comment
+  (defui Line
+    static om/Ident
+    (ident [this props]
+      [:line/by-id (:id props)])
+    static om/IQuery
+    (query [this]
+      [:id :line-name])))
 
 (defui Checkbox
   static om/Ident
@@ -94,22 +112,35 @@
     [:line/by-id (:id props)])
   static om/IQuery
   (query [this]
-    [:id :line-name])
+    [:id :line-name :selected?])
   Object
   (render [this]
-    (let [{:keys [id line-name]} (om/props this)
-          {:keys [selected?]} (om/get-computed this)
+    (let [{:keys [id line-name selected?]} (om/props this)
           _ (println "Rendering cb:" id "when selected is:" selected?)]
       (dom/div nil
-               (dom/input #js{:type    "checkbox"
+               (dom/input #js{:type      "checkbox"
                               :className "xlarge"
-                              :checked selected?
-                              :onClick (fn [e]
-                                         (let [action (.. e -target -checked)]
-                                           (println "Pressed so attempting to set to:" action)
-                                           (om/transact! this `[(graph/select-line {:want-to-select? ~action :id ~id}) :app/customers])))})
-               (dom/label #js{:className "xlarge"} (dom/h2 #js{:className "side higher-text"} "Some text"))))))
+                              :checked   (boolean selected?)
+                              :onClick   (fn [e]
+                                           (let [action (.. e -target -checked)]
+                                             (println "Pressed so attempting to set to:" action)
+                                             (om/transact! this `[(graph/select-line {:want-to-select? ~action :id ~id}) :graph/graph-lines])))})
+               (dom/label #js{:className "xlarge"} (dom/h2 #js{:className "side higher-text"} line-name))))))
 (def checkbox (om/factory Checkbox {:keyfn :id}))
+
+(defui FakeGraph
+  static om/Ident
+  (ident [this props]
+    [:fake-graph/by-id (:id props)])
+  static om/IQuery
+  (query [this]
+    [:id {:graph/graph-lines (om/get-query Checkbox)}])
+  Object
+  (render [this]
+    (let [{:keys [graph/graph-lines]} (om/props this)
+          _ (println (str "Rendering the FakeGraph with " (count graph-lines)))]
+      (dom/h2 #js{:className "fake-graph"} (apply str "GRAPH: " (interpose ", " (map :line-name graph-lines)))))))
+(def fake-graph-component (om/factory FakeGraph))
 
 (defui Customer
   static om/Ident
@@ -127,30 +158,31 @@
 (defui Root
   static om/IQuery
   (query [this]
-    [{:graph/lines (om/get-query Checkbox)}
-     {:graph/selected-lines (om/get-query Checkbox)}
+    [{:app/app-lines (om/get-query Checkbox)}
+     {:graph/fake-graph (om/get-query FakeGraph)}
+     {:graph/graph-lines (om/get-query Checkbox)}
      {:app/customers (om/get-query Customer)}
      ])
   Object
   (render [this]
     (println "Rendering 'demo.checkboxes' from Root")
-    (let [{:keys [graph/lines graph/selected-lines]} (om/props this)]
-      (dom/div #js{:className "container"}
-               (check-default-db @my-reconciler)
-               (dom/div nil
-                        (for [line lines
-                              :let [selected? (boolean (some #{line} selected-lines))]]
-                          (checkbox (om/computed line {:selected? selected?}))))
-               (dom/div nil
-                        (dom/br nil)
-                        (fake-graph selected-lines)
-                        #_(dom/br nil)
-                        #_(dom/br nil)
-                        #_(help/any-action {:text "Show State" :action #(pprint @my-reconciler)})
-                        #_(dom/br nil))
-               #_(help/any-action {:text "Add Selection" :action #(help/mutate help/norm-state true 102)})
-               #_(help/any-action {:text "Remove Selection" :action #(help/mutate help/norm-state false 100)})
-               ))))
+    (let [{:keys [app/app-lines graph/fake-graph]} (om/props this)]
+      (dom/div nil
+               (println (str "fake graph: " fake-graph))
+               (dom/div #js{:className "container"}
+                        (check-default-db @my-reconciler)
+                        (dom/div nil
+                                 (map checkbox app-lines))
+                        (dom/div nil
+                                 (dom/br nil)
+                                 (fake-graph-component fake-graph)
+                                 #_(dom/br nil)
+                                 #_(dom/br nil)
+                                 (help/any-action {:text "Show State" :action #(pprint @my-reconciler)})
+                                 #_(dom/br nil))
+                        #_(help/any-action {:text "Add Selection" :action #(help/mutate help/norm-state true 102)})
+                        #_(help/any-action {:text "Remove Selection" :action #(help/mutate help/norm-state false 100)})
+                        )))))
 
 (defn run []
   (om/add-root! my-reconciler
