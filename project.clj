@@ -1,5 +1,5 @@
 (defproject om-next-client-demo "0.0.0-SNAPSHOT"
-  :description "Clicking checkboxes should add or remove lines on graph (not a real graph)"
+  :description "Clicking checkboxes adds/removes lines on a fake graph"
 
   :dependencies [[org.clojure/clojure "1.7.0"]
                  [org.clojure/clojurescript "1.7.228"]
