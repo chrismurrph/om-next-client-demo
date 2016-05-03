@@ -34,12 +34,6 @@
   (let [st @state]
     {:value (om/db->tree query (get st key) st)}))
 
-(comment
-  (defmethod read :fake-graph/by-id
-    [{:keys [state query]} key _]
-    (let [st @state]
-      {:value (om/db->tree query (get st key) st)})))
-
 (defn update-graph-lines [st want-to-select? id]
   (let [graph-lines [:fake-graph/by-id 1000 :graph/graph-lines]]
     (if want-to-select?
@@ -73,14 +67,6 @@
      :line-name "Carbon Monoxide"
      :selected? false}
     ]
-   :app/customers
-   [{:id 200
-     :first-name "Greg"}
-    {:id 201
-     :first-name "Sally"}
-    {:id 202
-     :first-name "Ben"}
-    ]
    }
   )
 
@@ -97,14 +83,15 @@
       (pprint st)
       (db-format/show-hud check-result))))
 
-(comment
-  (defui Line
-    static om/Ident
-    (ident [this props]
-      [:line/by-id (:id props)])
-    static om/IQuery
-    (query [this]
-      [:id :line-name])))
+;; This component isn't essential - we could have used Checkbox in FakeGraph
+;; They both have the same ident
+(defui Line
+  static om/Ident
+  (ident [this props]
+    [:line/by-id (:id props)])
+  static om/IQuery
+  (query [this]
+    [:id :line-name]))
 
 (defui Checkbox
   static om/Ident
@@ -134,21 +121,12 @@
     [:fake-graph/by-id (:id props)])
   static om/IQuery
   (query [this]
-    [:id {:graph/graph-lines (om/get-query Checkbox)}])
+    [:id {:graph/graph-lines (om/get-query Line)}])
   Object
   (render [this]
-    (let [{:keys [graph/graph-lines]} (om/props this)
-          _ (println (str "Rendering the FakeGraph with " (count graph-lines)))]
+    (let [{:keys [graph/graph-lines]} (om/props this)]
       (dom/h2 #js{:className "fake-graph"} (apply str "GRAPH: " (interpose ", " (map :line-name graph-lines)))))))
 (def fake-graph-component (om/factory FakeGraph))
-
-(defui Customer
-  static om/Ident
-  (ident [this props]
-    [:customer/by-id (:id props)])
-  static om/IQuery
-  (query [this]
-    [:id :first-name]))
 
 (def my-reconciler
   (om/reconciler {:normalize true ;; -> documentation
@@ -160,15 +138,13 @@
   (query [this]
     [{:app/app-lines (om/get-query Checkbox)}
      {:graph/fake-graph (om/get-query FakeGraph)}
-     {:graph/graph-lines (om/get-query Checkbox)}
-     {:app/customers (om/get-query Customer)}
+     {:graph/graph-lines (om/get-query Line)}
      ])
   Object
   (render [this]
     (println "Rendering 'demo.checkboxes' from Root")
     (let [{:keys [app/app-lines graph/fake-graph]} (om/props this)]
       (dom/div nil
-               (println (str "fake graph: " fake-graph))
                (dom/div #js{:className "container"}
                         (check-default-db @my-reconciler)
                         (dom/div nil
