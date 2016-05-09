@@ -121,7 +121,8 @@
     [:fake-graph/by-id (:id props)])
   static om/IQuery
   (query [this]
-    [:id {:graph/graph-lines (om/get-query Line)}])
+    [:id
+     {:graph/graph-lines (om/get-query Line)}])
   Object
   (render [this]
     (let [{:keys [graph/graph-lines]} (om/props this)]
@@ -152,13 +153,7 @@
                         (dom/div nil
                                  (dom/br nil)
                                  (fake-graph-component fake-graph)
-                                 #_(dom/br nil)
-                                 #_(dom/br nil)
-                                 (help/any-action {:text "Show State" :action #(pprint @my-reconciler)})
-                                 #_(dom/br nil))
-                        #_(help/any-action {:text "Add Selection" :action #(help/mutate help/norm-state true 102)})
-                        #_(help/any-action {:text "Remove Selection" :action #(help/mutate help/norm-state false 100)})
-                        )))))
+                                 (help/any-action {:text "Show State" :action #(pprint @my-reconciler)})))))))
 
 (defn run []
   (om/add-root! my-reconciler
